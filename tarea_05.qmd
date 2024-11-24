@@ -3,6 +3,7 @@ title: "Tarea 5_Redes Neuronales Simples y Regularización"
 output:
   html_document:
     self_contained: true
+cache: true
 ---
 
 ```{r}
@@ -35,7 +36,7 @@ también tiene una sola unidad.
 
 Usamos el siguente código de keras para hacer el ajuste:
 
-```{r, message = FALSE}
+```{r keras, message = FALSE}
 library(keras3)
 # para reproducibilidad, pero es más lento:
 tensorflow::set_random_seed(13) 
@@ -48,16 +49,16 @@ ejemplo_mod |>
     activation = "linear", kernel_regularizer = regularizer_l2(0.001))
 ```
 
-```{r}
+```{r hola, message = FALSE, echo = FALSE}
 x_mat <- as.matrix(datos$x_1, ncol = 1)
 y <- datos$y
 # usamos devianza como medida de error y descenso en gradiente:
-ejemplo_mod |> compile(loss = "mse", 
+ejemplo_mod |> keras3::compile(loss = "mse", 
   optimizer = optimizer_sgd(learning_rate = 0.4),
   metrics = "mse")
 # nota: esta learning rate (lr) es demasiado alta para problemas típicos
 historia <- ejemplo_mod |> 
-  fit(x_mat, y, 
+  keras3::fit(x_mat, y, 
       batch_size = nrow(x_mat), epochs = 200, verbose = 1)
 ```
 
@@ -76,9 +77,10 @@ Después de verificar convergencia (chécalo examinando la variable
 
 ```{r}
 dat_3 <- tibble(x = x, f_2 = predict(ejemplo_mod, as.matrix(x, ncol = 1))[,1])
-ggplot(dat_3, aes(x = x, y = f_2)) + geom_line()+
-geom_line(data = dat_f, aes(x = x, y = f), col='red') +
-   geom_point(data = datos, aes(x = x_1, y = y))
+ggplot2::ggplot(dat_3, aes(x = x, y = f_2)) + 
+  ggplot2::geom_line()+
+  ggplot2::geom_line(data = dat_f, aes(x = x, y = f), col='red') +
+  ggplot2::geom_point(data = datos, aes(x = x_1, y = y))
 ```
 
 Los coeficientes obtenidos se muestran abajo. Nótese: la primera componente de

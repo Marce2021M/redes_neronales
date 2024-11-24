@@ -1,8 +1,10 @@
 ---
 title: "06-redes-neuronales-1"
-output:
-  html_document:
-    self_contained: true
+format:
+  html:
+    embed-resources: true
+    self-contained: true
+    number-sections: true
 ---
 # Redes neuronales (intro)
 
@@ -882,7 +884,7 @@ como fórmula recursiva:
 $$
 \delta_j^{(l)} 
 = \left (\sum_{s=1}^{n_l} \delta_s^{(l+1)} \theta_{s,j}^{(l)}\right ) h'(z_j^{(l)}),
-$$ {#eq-delta-recursion}
+${#eq-delta-recursion}
 para $j=1,2,\ldots, n_{l}$.
 
 
@@ -1041,12 +1043,31 @@ para afinar estos parámetros según validación cruzada o una muestra de valida
 ### Ejemplo (regresión) {-}
 
 ```{r, message = FALSE}
-dat_grasa <- read_csv(file = '../datos/bodyfat.csv') 
+dat_grasa <- read_csv(file = 'bodyfat.csv') |> 
+  rename(
+    densidad = Density,
+    grasacorp = BodyFat,
+    edad = Age,
+    peso = Weight,
+    estatura = Height,
+    cuello = Neck,
+    pecho = Chest,
+    abdomen = Abdomen,
+    cadera = Hip,
+    muslo = Thigh,
+    rodilla = Knee,
+    tobillo = Ankle,
+    biceps = Biceps,
+    antebrazo = Forearm,
+    muñeca = Wrist
+  )
 set.seed(183)
 grasa_particion <- initial_split(dat_grasa, 0.5)
 grasa_ent <- training(grasa_particion)
 grasa_pr <- testing(grasa_particion)
 nrow(grasa_ent)
+
+
 ```
 
 Una exploración de este conjunto de datos revela algunos datos
@@ -1061,7 +1082,7 @@ g_1 <- grasa_ent |> ggplot(aes(x = estatura, y = peso)) +
   geom_point()
 g_2 <- grasa_ent |> ggplot(aes(x = abdomen, y = peso)) + 
   geom_point()
-g_1 + g_2
+# g_1 + g_2
 ```
 
 
@@ -1171,7 +1192,7 @@ g_2 <- tibble(preds_2 = preds_2[, 1], y = y_grasa_pr) |>
   geom_point() + 
   geom_abline(slope = 1, intercept = 0, color = "red") +
   coord_obs_pred()
-g_1 + g_2
+#g_1 + g_2
 ```
 
 ### Resumen {-}
