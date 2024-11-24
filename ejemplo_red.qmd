@@ -1,0 +1,358 @@
+---
+title: "06-redes-neuronales-1"
+format:
+  html:
+    embed-resources: true
+    self-contained: true
+    number-sections: true
+---
+
+# Visualizamos los datos
+
+```{r}
+# Cargamos las librerías necesarias
+library(keras3)
+library(tensorflow)
+library(tidyverse)
+# Cargamos los datos
+data_final <- read.csv("data_final.csv")
+# Visualizamos las variables
+names(data_final)
+```
+
+
+```{r}
+tensorflow::set_random_seed(123)
+# Configuramos el modelo en keras
+modelo_1 <- keras_model_sequential() %>%
+  layer_dense(units = 40, activation = 'sigmoid', name = 'capa_1', kernel_regularizer = regularizer_l2(.05)) %>%
+  layer_dense(units = 20, activation = 'sigmoid', name = 'capa_2', kernel_regularizer = regularizer_l2(.05)) %>%
+  layer_dense(units = 10, activation = 'sigmoid', name = 'capa_3', kernel_regularizer = regularizer_l2(.05)) %>%
+  layer_dense(units = 5, activation = 'sigmoid', name = 'capa_4', kernel_regularizer = regularizer_l2(.05)) %>%
+  layer_dense(units = 1, activation = 'sigmoid', name = 'capa_salida', kernel_regularizer = regularizer_l2(.05))
+
+# Compilamos el modelo
+modelo_1 |> compile(loss = "mse",metrics = c("mse"),
+  optimizer = optimizer_sgd(learning_rate = 0.0005, momentum = 0.95)
+)
+
+# Spliteamos los datos
+set.seed(123)
+library(rsample)
+data_final_particion <- initial_split(data_final, 0.7)
+data_final_ent <- training(data_final_particion)
+data_final_pr <- testing(data_final_particion)
+
+
+
+# Preparación de los datos
+library(recipes)
+datos_receta <- recipe(price ~ ., data_final_ent) |> 
+  step_zv(all_numeric()) |>  # Elimina columnas con varianza cero
+  step_normalize(all_numeric()) |>  # Normaliza las columnas restantes
+  prep()
+
+# entrenamiento
+x_datos_final <- datos_receta |> juice() |> 
+  select(-price) |> as.matrix()
+vars_nombres <- colnames(x_datos_final)
+y__data_final <- datos_receta |> juice() |> pull(price)
+# validación
+x_datos_final_pr <- datos_receta |> bake(data_final_pr) |> 
+  select(-price) |> as.matrix()
+y_data_final_pr <- datos_receta |> bake(data_final_pr) |> pull(price)
+nrows <- nrow(x_datos_final)
+# Creamos la historia del entrenamiento
+historia <- modelo_1 |> fit(
+  x = x_datos_final, y = y__data_final,
+  validation_data = list(x_datos_final_pr, y_data_final_pr),
+  batch_size = nrows, epochs = 300, verbose = 3
+)
+# Visualizamos la historia
+plot(historia, smooth = FALSE)
+
+preds <- predict(modelo_1, x_datos_final_pr) 
+library(tune)
+g_1 <- tibble(preds = preds[, 1], y = y_data_final_pr) |> 
+  ggplot(aes(x = preds, y = y)) + 
+  geom_point() + 
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  coord_obs_pred()
+g_1
+
+library(yardstick)
+metric_set(rmse, rsq)(
+  tibble(pred = preds[, 1], truth = y_data_final_pr),
+  truth = truth, estimate = pred
+)
+
+```
+
+# Este es el modelo
+
+```{r}
+modelo_1 <- keras_model_sequential() %>%
+  layer_dense(units = 100, activation = 'relu', name = 'capa_1', kernel_regularizer = regularizer_l2(0.01)) %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 90, activation = 'relu', name = 'capa_2', kernel_regularizer = regularizer_l2(0.01)) %>%
+  layer_dense(units = 80, activation = 'sigmoid', name = 'capa_2_s', kernel_regularizer = regularizer_l2(0.01)) %>%
+  layer_dense(units = 40, activation = 'relu', name = 'capa_3', kernel_regularizer = regularizer_l2(0.01)) %>%
+  layer_dense(units = 30, activation = 'sigmoid', name = 'capa_3_s', kernel_regularizer = regularizer_l2(0.01)) %>%
+  layer_dense(units = 15, activation = 'relu', name = 'capa_4', kernel_regularizer = regularizer_l2(0.01)) %>%
+  layer_dense(units = 1, activation = 'linear', name = 'capa_salida')
+
+
+modelo_1 |> compile(
+  loss = "mse",
+  metrics = c("mse"),
+  optimizer = optimizer_adam(learning_rate = 0.001)
+)
+
+
+set.seed(123)
+data_final_particion <- initial_split(data_final, 0.7)
+data_final_ent <- training(data_final_particion)
+data_final_temp <- testing(data_final_particion)
+
+# Dividir en validación y prueba
+data_final_validacion <- initial_split(data_final_temp, 0.5)
+data_final_val <- training(data_final_validacion)
+data_final_pr <- testing(data_final_validacion)
+
+callback_es <- callback_early_stopping(monitor = "val_loss", patience = 10, restore_best_weights = TRUE)
+
+historia <- modelo_1 |> fit(
+  x = x_datos_final, y = y__data_final,
+  validation_data = list(x_datos_final_pr, y_data_final_pr),
+  batch_size = 512, epochs = 100, verbose = 1, callbacks = list(callback_es)
+)
+
+plot(historia, smooth = FALSE)
+
+# Predicciones
+preds <- predict(modelo_1, x_datos_final_pr)
+
+# Métricas
+library(yardstick)
+metric_set(rmse, rsq)(
+  tibble(pred = preds[, 1], truth = y_data_final_pr),
+  truth = truth, estimate = pred
+)
+
+library(tune)
+g_1 <- tibble(preds = preds[, 1], y = y_data_final_pr) |> 
+  ggplot(aes(x = preds, y = y)) + 
+  geom_point() + 
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  coord_obs_pred()
+g_1
+
+library(yardstick)
+metric_set(rmse, rsq)(
+  tibble(pred = preds[, 1], truth = y_data_final_pr),
+  truth = truth, estimate = pred
+)
+
+```
+
+# PREUBAS NO EXITOSASS
+
+```{r}
+# Configuración del modelo
+modelo_1 <- keras_model_sequential() %>%
+  layer_dense(units = 71, activation = 'relu', name = 'capa_1', kernel_regularizer = regularizer_l2(0.005)) %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 50, activation = 'relu', name = 'capa_2', kernel_regularizer = regularizer_l2(0.005)) %>%
+  layer_dense(units = 30, activation = 'relu', name = 'capa_3', kernel_regularizer = regularizer_l2(0.005)) %>%
+  layer_dense(units = 15, activation = 'relu', name = 'capa_4', kernel_regularizer = regularizer_l2(0.005)) %>%
+  layer_dense(units = 1, activation = 'linear', name = 'capa_salida')
+
+# Compilación del modelo
+modelo_1 |> compile(
+  loss = "mse",
+  metrics = c("mse"),
+  optimizer = optimizer_adam(learning_rate = 0.001)
+)
+
+# Entrenamiento con callbacks
+callback_es <- callback_early_stopping(monitor = "val_loss", patience = 10, restore_best_weights = TRUE)
+callback_lr <- callback_reduce_lr_on_plateau(monitor = "val_loss", factor = 0.5, patience = 5, verbose = 1)
+
+historia <- modelo_1 |> fit(
+  x = x_datos_final, y = y__data_final,
+  validation_data = list(x_datos_final_pr, y_data_final_pr),
+  batch_size = 256, epochs = 300, verbose = 1, callbacks = list(callback_es, callback_lr)
+)
+
+plot(historia, smooth = FALSE)
+
+library(ggplot2)
+g_1 <- tibble(preds = preds[, 1], y = y_data_final_pr) |> 
+  ggplot(aes(x = preds, y = y)) + 
+  geom_point(alpha = 0.5) + 
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  labs(x = "Predicciones", y = "Valores reales") +
+  theme_minimal()
+g_1
+
+library(yardstick)
+metric_set(rmse, rsq)(
+  tibble(pred = preds[, 1], truth = y_data_final_pr),
+  truth = truth, estimate = pred
+)
+
+
+```
+
+
+```{r}
+library(keras)
+tensorflow::set_random_seed(123)
+
+# Modelo profundo con normalización
+modelo_1 <- keras_model_sequential() %>%
+  layer_dense(units = 128, activation = 'relu', kernel_regularizer = regularizer_l2(0.005)) %>%
+  layer_batch_normalization() %>%
+  layer_dropout(rate = 0.4) %>%
+  layer_dense(units = 64, activation = 'relu', kernel_regularizer = regularizer_l2(0.005)) %>%
+  layer_batch_normalization() %>%
+  layer_dense(units = 32, activation = 'relu', kernel_regularizer = regularizer_l2(0.005)) %>%
+  layer_dense(units = 1, activation = 'linear')
+
+# Compilación
+modelo_1 |> compile(
+  loss = "mse",
+  metrics = c("mse"),
+  optimizer = optimizer_adam(learning_rate = 0.001)
+)
+
+# Callbacks
+callback_es <- callback_early_stopping(monitor = "val_loss", patience = 10, restore_best_weights = TRUE)
+callback_lr <- callback_reduce_lr_on_plateau(monitor = "val_loss", factor = 0.5, patience = 5, verbose = 1)
+
+# Entrenamiento
+historia <- modelo_1 |> fit(
+  x = x_datos_final, y = y__data_final,
+  validation_data = list(x_datos_final_pr, y_data_final_pr),
+  batch_size = 128, epochs = 300, verbose = 1, callbacks = list(callback_es, callback_lr)
+)
+
+# Predicciones
+preds <- predict(modelo_1, x_datos_final_pr)
+
+# Evaluación
+library(yardstick)
+metric_set(rmse, rsq)(
+  tibble(pred = preds[, 1], truth = y_data_final_pr),
+  truth = truth, estimate = pred
+)
+```
+
+```{r}
+library(tensorflow)
+library(rsample)
+library(recipes)
+library(ggplot2)
+library(yardstick)
+library(tune)
+
+tensorflow::set_random_seed(123)
+
+# Dividimos los datos en entrenamiento, validación y prueba
+set.seed(123)
+data_final_particion <- initial_split(data_final, 0.7)
+data_final_ent <- training(data_final_particion)
+data_final_temp <- testing(data_final_particion)
+
+# Dividir en validación y prueba
+data_final_validacion <- initial_split(data_final_temp, 0.5)
+data_final_val <- training(data_final_validacion)
+data_final_pr <- testing(data_final_validacion)
+
+# Preparamos los datos con normalización y eliminación de columnas sin varianza
+datos_receta <- recipe(price ~ ., data_final_ent) |> 
+  step_zv(all_numeric()) |>  # Elimina columnas con varianza cero
+  step_normalize(all_numeric()) |>  # Normaliza las columnas restantes
+  prep()
+
+# Datos de entrenamiento
+x_datos_final <- datos_receta |> juice() |> 
+  select(-price) |> as.matrix()
+y_datos_final <- datos_receta |> juice() |> pull(price)
+
+# Datos de validación y prueba
+x_datos_final_val <- datos_receta |> bake(data_final_val) |> 
+  select(-price) |> as.matrix()
+y_datos_final_val <- datos_receta |> bake(data_final_val) |> pull(price)
+
+x_datos_final_pr <- datos_receta |> bake(data_final_pr) |> 
+  select(-price) |> as.matrix()
+y_datos_final_pr <- datos_receta |> bake(data_final_pr) |> pull(price)
+# Creamos el modelo avanzado
+modelo_1 <- keras_model_sequential(name = "modelo_1") %>%
+  keras3::layer_dense(units = 256, activation = 'relu', kernel_regularizer = keras3::regularizer_l1_l2(0.01,.05), name = 'capa_1') %>%
+  layer_batch_normalization(name = "batch_norm_1") %>%
+  layer_dropout(rate = 0.3, name = "dropout_1") %>%
+  keras3::layer_dense(units = 64, activation = 'relu', kernel_regularizer = keras3::regularizer_l1_l2(0.01,.05), name = 'capa_2') %>%
+  layer_batch_normalization(name = "batch_norm_2") %>%
+  layer_dropout(rate = 0.3, name = "dropout_2") %>%
+  keras3::layer_dense(units = 32, activation = 'relu', kernel_regularizer = keras3::regularizer_l1_l2(0.01,.05), name = 'capa_3') %>%
+  keras3::layer_dense(units = 1, activation = 'linear', name = 'capa_salida')
+
+# Compilamos el modelo
+modelo_1 |> compile(
+  loss = "mse",
+  metrics = c("mse"),
+  optimizer = optimizer_adam(learning_rate = 0.05)
+)
+
+# Definimos los callbacks
+callback_es <- callback_early_stopping(
+  monitor = "val_loss", 
+  patience = 10, 
+  restore_best_weights = TRUE
+)
+
+callback_lr <- callback_reduce_lr_on_plateau(
+  monitor = "val_loss", 
+  factor = 0.5, 
+  patience = 5, 
+  verbose = 1
+)
+
+# Entrenamos el modelo
+historia <- modelo_1 |> fit(
+  x = x_datos_final, y = y_datos_final,
+  validation_data = list(x_datos_final_val, y_datos_final_val),
+  batch_size = 128, 
+  epochs = 300, 
+  verbose = 1, 
+  callbacks = list(callback_es, callback_lr)
+)
+
+# Visualizamos la historia
+plot(historia, smooth = FALSE)
+
+# Predicciones
+preds <- predict(modelo_1, x_datos_final_pr)
+
+# Métricas de desempeño
+metricas <- metric_set(rmse, rsq)(
+  tibble(pred = preds[, 1], truth = y_datos_final_pr),
+  truth = truth, estimate = pred
+)
+
+# Visualización de predicciones vs valores reales
+g_1 <- tibble(preds = preds[, 1], y = y_datos_final_pr) |> 
+  ggplot(aes(x = preds, y = y)) + 
+  geom_point(alpha = 0.5) + 
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  labs(x = "Predicciones", y = "Valores Reales") +
+  theme_minimal()
+g_1
+
+# Imprimimos las métricas
+print(metricas)
+```
+
+
